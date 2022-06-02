@@ -1,6 +1,7 @@
 const express = require("express");
 const mysql = require("mysql");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const app = express();
@@ -57,7 +58,9 @@ app.post("/register", async (req, res) => {
       if (result.length !== 0) {
         connection.release();
         console.log("User already exists");
-        return res.status(409);
+        return res
+          .status(400)
+          .json({ success: false, message: "user already exists" });
       } else {
         await connection.query(insert_query, (err, result) => {
           connection.release();
@@ -66,6 +69,74 @@ app.post("/register", async (req, res) => {
           return res
             .status(201)
             .json({ success: true, msg: "user created successfully" });
+        });
+      }
+    });
+  });
+});
+
+// ##################################### Login User API ################################### 🚀🚀
+app.post("/signin", (req, res) => {
+  const { email, password } = req.body;
+  db.getConnection(async (err, connection) => {
+    if (err) throw err;
+    const findUserQuery = "Select * from userTable where email = ?";
+    const searchQuery = mysql.format(findUserQuery, [email]);
+
+    await connection.query(searchQuery, async (err, result) => {
+      connection.release();
+      if (err) throw err;
+      if (result.length === 0) {
+        return res.status(404).json({ success: false, msg: "User not found" });
+      } else {
+        const hashedPasswd = result[0].password;
+        if (await bcrypt.compare(password, hashedPasswd)) {
+          const token = jwt.sign(
+            { id: result[0].userId },
+            process.env.JWT_SECRET
+          );
+          const { userId, name, email, phone, plan } = result[0];
+          return res.status(200).json({
+            success: true,
+            token,
+            user: { userId, name, email, phone, plan },
+          });
+        } else {
+          return res
+            .status(400)
+            .json({ success: false, msg: "Incorrect password!" });
+        }
+
+        // return res.status(200).json({ success: true, msg: result });
+      }
+    });
+  });
+});
+
+// ################################### Update User API ################################### 🚀🚀
+app.put("/update", (req, res) => {
+  const { id, plan } = req.body;
+  db.getConnection(async (err, connection) => {
+    if (err) throw err;
+    const searchUser = "SELECT * FROM userTable WHERE userId = ?";
+    const search_query = mysql.format(searchUser, [id]);
+    const findUserQuery = "UPDATE userTable SET plan = ? WHERE userId = ?";
+    const sqlUpdateQuery = mysql.format(findUserQuery, [plan, id]);
+
+    await connection.query(search_query, async (err, result) => {
+      if (err) throw err;
+      if (result.length === 0) {
+        connection.release();
+        return res
+          .status(404)
+          .json({ success: false, message: "No user found" });
+      } else {
+        await connection.query(sqlUpdateQuery, (err, result) => {
+          connection.release();
+          if (err) throw err;
+          return res
+            .status(201)
+            .json({ success: true, msg: "user updated successfully" });
         });
       }
     });
